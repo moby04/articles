@@ -4,45 +4,50 @@
 
 Ever since Docker was released in 2013 it has becoming a new industry standard for running applications both in dev as well as production environments. Docker images are quite simple to build but, as any other powerfull tool, they have a few concepts that are easy to overlook.
 
-This document aims to describe basic concepts of Docker and suggest a few good practices. It should be considered as a collection of various hints rather than comprehensive guide.
+This document aims to describe basic concepts of Docker and suggest a few good practices. It should be considered as a collection of random hints rather than comprehensive guide.
 
 ## Basics
 
 Containers concept is not limited to Docker. In fact there is an open source community under Linux Foundation called [Open Container Initiative](https://www.opencontainers.org) that takes care
-over the industry standards since it was started by Docker Inc. in 2015. As such, there are other implementations available but Docker is the most popular and the main focus of this article.
+over the industry standards since it was started by Docker Inc. in 2015. As such, there are other implementations available but Docker is the most popular and as such it is the main focus of
+this article.
 
 Many concepts described below will apply to other implementations as well but they were tested on Docker only.
 
 ### What is Docker
 
-Docker is a broad term that actually can mean something totally different depending on exact context. It can mean Docker Image or Container running a specific application workload but this term is also used to refer to the actual applications responsible for running these workloads. Finally Docker might refer (though it's the least commonly used meaning) to a language used to write `Dockerfile`s to define Images.
+Docker is a broad term that actually can mean something totally different depending on exact context. It can also mean Docker Image or Container running a specific application workload but
+this term is also used to refer to the actual applications responsible for running these workloads. Finally Docker might refer (though it's the least commonly used meaning) to a language
+used to write `Dockerfile`s to define Images.
 
 It is mentioned in previous paragraph that there are multiple applications responsible for running Containers. These are:
 
-1. Docker Engine (or Daemon). It is a process that manages various mechanisms and features of OS to ensure that Containers are running on the host operating system in a fully separated environment.
+1. Docker Engine (or Daemon). It is a process that manages various mechanisms and features of OS to ensure that Containers are running on the host operating system in a fully separated
+   environment.
 2. Docker CLI. A command line client that communicates with Docker Daemon.
 
-Usually both these applications run on the same machine but that does not have to be the case every time. In certain situation it is possible to configure Docker CLI so that it will communicate with a Daemon running on a different machine - both virtual and remote.
+Usually both these applications run on the same machine but that does not have to be the case every time. In certain situation it is possible to configure Docker CLI so that it will 
+communicate with a Daemon running on a different machine - both virtual and physical.
 
 Besides purely technical meaning, Docker is also a name of a [company](https://www.docker.com/company) that maintains entire technology.
 
 ### About Docker Daemon
 
-Exact implementation details underlying containers concept is out of this article's scope but it is important to understand that Deamon actually needs to run as a root to make use of multiple kernel level concepts. This means that it is Docker's responsibility to restrict permissions of processes running within containers and improperly designed Images can be a serious threat to the system security.
+It is important to understand that Deamon actually needs to run as a root to make use of multiple kernel level concepts. This means that it is Docker's responsibility to restrict permissions of processes running within containers and improperly designed or run Images can be a serious threat to the system security.
+
+## Implementation nuances
+
+Exact implementation details underlying containers are way out of scope of this article but some concepts are worth mentioning. Check [this article](https://www.littleman.co/articles/what-is-a-container/) for more detailed explantion of containerization concepts.
 
 ### Images vs Containers
 
 Main terms related to Docker are Images and Containers. Sometimes these terms are being mixed but in fact there's important difference between them and this should be clear.
 
-Docker Image is a result of executing `docker image build` command. It is actually a definition of a workload and defines the environment in which given application workload will run. `Dockerfile` is used to define this environment. Every Image consists of multiple layers - one for each command within `Dockerfile` that are being cached and reused by Docker Engine. All image layers are read only.
+Docker Image is a result of executing `docker image build` command. It is actually a definition of a workload and defines the environment in which given application workload will run. `Dockerfile` is used to define this environment. Every Image consists of multiple layers - one for each command within `Dockerfile` - that are being cached and reused by Docker Engine. All image layers are read only.
 
 Docker Container is actual running instance of the workload. If you're a developer you might think of it that in a way Container is a running instance of an Image in similar way like object is an instance of a specific class. Container adds a writable layer on top of Image's read-only ones.
 
-This layer contains changes made while container is running and they can be saved as a new read-only layer to create new Docker Image.
-
-## Implementation nuances
-
-Exact implementation details underlying containers are way out of scope of this article but some concepts are worth mentioning. Check [this article](https://www.littleman.co/articles/what-is-a-container/) for more detailed explantion of containerization concepts.
+This layer contains changes made while container is running and it can be saved as a new read-only layer to create new Docker Image.
 
 ### Image Layers
 
@@ -78,7 +83,7 @@ This approach allows Docker to cache and reuse parts of the data in multiple Ima
 
 ### Cache busting
 
-Docker will try to reuse existing layers as much as possible. Only when some command in Dockerfile changes (or files that need to be added to the container by `COPY`/`ADD` command changes) this and following commands will result with overal image diverging:
+Docker will try to reuse existing layers as much as possible. However, when some command in Dockerfile changes or files that need to be added to the container by `COPY`/`ADD` command change, this and following commands will result with overal image diverging:
 
 ```bash
 ╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
@@ -99,7 +104,7 @@ RUN echo "layer 3"
 FROM busybox
 RUN echo "layer 1"
 RUN echo "layer 2 changed!"
-RUN echo "layer 3b"
+RUN echo "layer 3"
 ╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
 ╰⎼$ docker image build -t cache-busting:v1 ./v1/
 Sending build context to Docker daemon  2.048kB
@@ -135,9 +140,9 @@ Step 3/4 : RUN echo "layer 2 changed!"
 layer 2 changed!
 Removing intermediate container 692b7a4f394e
  ---> e91e58bdca83
-Step 4/4 : RUN echo "layer 3b"
+Step 4/4 : RUN echo "layer 3"
  ---> Running in a13a8ca18ce9
-layer 3b
+layer 3
 Removing intermediate container a13a8ca18ce9
  ---> 63f754530481
 Successfully built 63f754530481
@@ -146,6 +151,8 @@ Successfully tagged cache-busting:v2
 
 As you can see above Docker did not execute `echo "layer 1"` while building second version of the image and just used the result from the cache, This might result with some side effects and some
 will be mentioned later in this text.
+
+On the other hand you can see that even though last command does not differ between versions it gets executed again. The reason for this is that entire cache got busted at previous step and all the following commands need to be executed again.
 
 ### Containers vs Virtual Machines
 
@@ -206,11 +213,50 @@ These images have empty namespace in `hub.docker.com` (in public url it is repre
 exact TAG you want to work with.
 - DIGEST - Even though it is not a good practice to change the tag it might sometimes happen. In such cases you can always refer to exact build by its digest (or at least part of it that is long enough to identify specific build)
 
+## Ephemeral nature of containers
+
+It is important to understand that running containers are ephemeral by nature. This means that it should be safe to stop them and create new ones at any point in time without any risk. In fact
+this is the case in orchestration engines: whenever given container misbehaves it gets killed and a new one is getting started automatically.
+
+### Volumes
+
+To ensure stateless nature of containers Docker comes with a mechanism of `Volume`s - external storage that can be attached to the container. By default volume contents is stored in local 
+file system under Docker directory. Exact location depends on the host operating system but on Linux it would be under `/var/lib/docker/volumes/` - each volume would be a separate directory here.
+
+This default behavior however is just a tip of an ice berg. In fact, Volumes are managed by plugin system that allows to attach external storages in various environments. This is important
+in distributed environments where Volume can represent AWS EBS, Azure Blob Storage, Kubernetes Volume, etc. All these and much more can be mapped to Docker's Volume mechanism so that from
+perspective of application running within a container they would become just another directory in the file system.
+
+All that developer needs to worry about is to remember that any data that should be persisted after container gets deleted need to be stored within locations mounted as external Volumes.
+
+### Volume Types
+
+There are 3 types of volumes that developers should be aware of:
+
+1. Anonymous volume. It gets created if `Dockerfile` defines some directory within an Image as a Volume but the volume is not provided when container is booted. In such case the volume will be
+   given a unique hash based name. By default such volume will no be removed when container gets deleted but it will also not get automatically reused when new container of given Image gets
+   started. Potential side effect of this is that Docker will continue creating new volumes that will never get reused so they will require manual cleanup.
+2. Named volume. During container creation Volume can get explicit name. In such case Docker Engine will try to find if a Volume with this name already exists to attach it to a new container
+   and create a new one only in case it cannot find one. This should be considered default choice in most cases.
+3. Bind mount. Finally Docker comes with a mechanism of mounting a directory or a single file from host file system into container. Changes in the container will be reflected in the host and vic
+   versa. This can be used for mounting files that are under active development (see `Application code base as part of the image`) or to enable communication with processes in the host machine.
+
+By default Volumes are mount with read-write permission but it can be changed while Volume is being attached so that the data inside the volume will be available to the application running
+in container in read only mode.
+
+### Bind mount for communication with Daemon.
+
+Some tools need to be able to communicate directly with the Docker Engine that runs the containerized application. To achieve this you just need to bind mount `/var/run/docker.sock` to
+container's files system.
+
+Quite common example of such tool is Traefik - reverse proxy that can routerequests based on L7 of OSI model instead of port only. Another example could be running some kind of web based
+dashboard as a GUI for local developer's setup (ie. TODO).
+
 ## Good practices
 
 ### Keep app image simillar between environments!
 
-Since containers contain all the dependencies required by given application it is possible to design the Image a way that they can be reused in all stages of application lifecycle. Naturally
+Since containers contain all the dependencies required by given application it is possible to design the Image in a way that they can be reused in all stages of application lifecycle. Naturally
 in dev environments you will need set of tools that are not supposed to be shipped to production but they should be only added on top of default Image instead of creating totally separate image
 for different stage.
 
@@ -240,7 +286,15 @@ no matter if it's executed on local developer's machine, on testing server or in
 
 ### Application code base as part of the image
 
-TODO
+Since Docker Image defines entire runtime environment for a given application it should be assumed that the application source code is actually part of this Image. For this reason source code
+should be always added into Image's file system so that it can be deployed on production environments without further operations related to the build.
+
+It might seem that this would be problematic in case of interpreted languages like PHP or NodeJS as it would require rebuilding entire Image each time developer does a change during his work
+however there are methods to avoid this issue. Besides mechanism of Volumes Docker has a mechanism called `Bind Mount` that maps files from host operating system into container itself so that
+in development environments it's possible to work within regular IDEs and see implemented changes immediately at the container level.
+
+Volumes and Bind Mounts are being attached during container start, after the Image has been built so these files are actually added on top of previously created read-only Image layers. This means
+that even if Image had the application source code baked in this source will be hidden while running development environment.
 
 ### Alpine vs Debian
 
@@ -277,11 +331,71 @@ Since Docker tries to keep backwards compatibility both versions are supported b
 
 Layered composition of Docker Images described above means that Deamon will try to reuse as much cached layers as possible but once certain Image diverge from existing order all following commands will actually create new layers. For this reason you should try to put commands that are most likely to change in the future at the end of Dockerfile.
 
+### Single Port for multiple containers
+
+It's common that complex application needs to expose multiple containers on a single port. Example of such situation could be:
+
+1. Magento application running in a container with PHP. This container might need to be available as `api.app.local` for REST API and `app.local/admin` for Magento backend access.
+2. NodeJS application for modern PWA based frontend. This container might need to be available as default choice for `app.local`
+3. MySQL database
+
+In such workload you won't have a problem with MySQL container as it would listen on separate port. The issue however could be that PHP and NodeJS containers should listen on the same ports (80 and/or 443). Docker by default will not be able to handle this as it can only expose one port from host to the selected container.
+
+Solution for this would be to introduce another container running a reverse proxy In this kind of setup you expose reverse proxy on regular HTTP(s) port and configure it to forward the traffik
+based on L7 information of network OSI model. In Sitewards we usually use [Traefik](http://www.traefik.io) but Nginx is also popular choice for that.
+
+Usually such reverse proxy requires direct communication with Docker Daemon to dynamically read current setup configuration to adjust routing rules. Bind Mount mechanism described above
+can be used for that.
+
+### Webserver as separate container or combined with PHP?
+
+There is a dispute, especially in case of PHP based application, if webserver should be running in the same container as the interpreter for the actual application. In case of PHP there are
+two major philosophies supported by most popular web servers:
+
+1. Apache. Official image for PHP runs both web server and and PHP as a single container with subprocess.
+2. Nginx. On the other hand official Nginx implementation suggests to run one container for Nginx that would forward requests to another container running PHP in FPM mode.
+
+Personally I tend to prefer to run both processes in a single container for a few reasons. Understanding of them however is needed since there might be some considerations in specific scenario
+that will make this approach worse choice.
+
+Most of these considerations however are related to the way how the application will be deployed on production workloads and exact strategies to handle those will be discussed in the article
+about container orchestration.
+
+#### Communication overhead
+
+Even if all the containers run on the same host machine there is certain cost of communication between containers. Such communication goes through virtual network created by Docker Engine with
+its own DNS resolution to point to the workload. This overhead is very small and could be ignored on single host setup but the cost gets much bigger in production workloads that are often
+using multiple machines and actual placement of the container is being dynamically determined by the orchestrator, In such case local communication between tightly related processes will
+need to happen over the network instead of localhost communication.
+
+Some orchestration engines offer additional control over the container placement but that is not always the case (i.e. Docker Swarm does not). And even if it was it greatly complicates overall
+system complexity.
+
+#### Shared files
+
+Due to historical reasons it's common scenario that both PHP and webserver need to share the same files like graphics, configurations, etc. This can result with various problems on production
+workloads if the same volume need to be mounted to various containers.
+
+Qutie often the only reasonable solution here would be to download these static resources on container startup which would result with greatly increased boot time.
+
+#### Nginx role
+
+Nginx has generally way more applications than Apache. Besides working as a webserver it is common case to use it as reverse proxy (described above) or even load balancer to distribute the traffic
+between multiple instances of the same containerized application.
+
+This is the reason why Nginx is commonly considered a separate process. In cases, when Nginx actually works as load balancer and/or reverse proxy it is desirable to be able to manage it
+indempendently from PHP. However if the sole purpose of Nginx is to handle HTTP requests for PHP based application it's better to handle both processes together.
+
+#### PHP as non web based application
+
+Not all PHP based workloads are actually web based. Modern applications often require multiple cron jobs or background workers. In such cases PHP might require scaling indemendent from webserver
+itself.
+
 ### Package managers vs layer caching
 
 #### Outdated package state
 
-One of the side effects of the way how Docker handles multiple layers you should be careful when using package managers within your dockerfiles. It is crucial to rememember that each command
+One of the side effects of the way how Docker handles multiple layers you should be careful when using package managers within your dockerfiles. It is crucial to remember that each command
 within Docker file is a separate layer that will be separately saved and cached:
 
 ```bash
