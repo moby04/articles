@@ -8,16 +8,23 @@ This document aims to describe basic concepts of Docker and suggest a few good p
 
 ## Basics
 
+Containers concept is not limited to Docker. In fact there is an open source community under Linux Foundation called [Open Container Initiative](https://www.opencontainers.org) that takes care
+over the industry standards since it was started by Docker Inc. in 2015. As such, there are other implementations available but Docker is the most popular and the main focus of this article.
+
+Many concepts described below will apply to other implementations as well but they were tested on Docker only.
+
 ### What is Docker
 
 Docker is a broad term that actually can mean something totally different depending on exact context. It can mean Docker Image or Container running a specific application workload but this term is also used to refer to the actual applications responsible for running these workloads. Finally Docker might refer (though it's the least commonly used meaning) to a language used to write `Dockerfile`s to define Images.
 
 It is mentioned in previous paragraph that there are multiple applications responsible for running Containers. These are:
 
-1. Docker Daemon (or Engine). It is a process that manages various mechanisms and features of OS to ensure that Containers are running on the host operating system in a fully separated environment.
+1. Docker Engine (or Daemon). It is a process that manages various mechanisms and features of OS to ensure that Containers are running on the host operating system in a fully separated environment.
 2. Docker CLI. A command line client that communicates with Docker Daemon.
 
 Usually both these applications run on the same machine but that does not have to be the case every time. In certain situation it is possible to configure Docker CLI so that it will communicate with a Daemon running on a different machine - both virtual and remote.
+
+Besides purely technical meaning, Docker is also a name of a [company](https://www.docker.com/company) that maintains entire technology.
 
 ### About Docker Daemon
 
@@ -67,7 +74,78 @@ IMAGE               CREATED             CREATED BY                              
 <missing>           6 days ago          /bin/sh -c #(nop) ADD file:2c1f5e08834f13ccb…   55.3MB 
 ```
 
-This approach allows Docker to cache and reuse parts of the data in multiple Images. We could for instance change `groupadd` command in `Dockerfile` above. This would result with Image using exact same first 16 layers and introduce 3 new layers in the new branch - one for the command that was modified and one for each command that gets executed afterwards.
+This approach allows Docker to cache and reuse parts of the data in multiple Images. 
+
+### Cache busting
+
+Docker will try to reuse existing layers as much as possible. Only when some command in Dockerfile changes (or files that need to be added to the container by `COPY`/`ADD` command changes) this and following commands will result with overal image diverging:
+
+```bash
+╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
+╰⎼$ ll
+total 16
+drwxr-xr-x 4 tkaplonski tkaplonski 4096 Dec  2 09:09 .
+drwxr-xr-x 3 tkaplonski tkaplonski 4096 Dec  2 09:09 ..
+drwxr-xr-x 2 tkaplonski tkaplonski 4096 Dec  2 09:05 v1
+drwxr-xr-x 2 tkaplonski tkaplonski 4096 Dec  2 09:06 v2
+╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
+╰⎼$ cat v1/Dockerfile 
+FROM busybox
+RUN echo "layer 1"
+RUN echo "layer 2"
+RUN echo "layer 3"
+╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
+╰⎼$ cat v2/Dockerfile 
+FROM busybox
+RUN echo "layer 1"
+RUN echo "layer 2 changed!"
+RUN echo "layer 3b"
+╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
+╰⎼$ docker image build -t cache-busting:v1 ./v1/
+Sending build context to Docker daemon  2.048kB
+Step 1/4 : FROM busybox
+ ---> 020584afccce
+Step 2/4 : RUN echo "layer 1"
+ ---> Running in 4e5ffca25a65
+layer 1
+Removing intermediate container 4e5ffca25a65
+ ---> 198f4fab9455
+Step 3/4 : RUN echo "layer 2"
+ ---> Running in 02086b886409
+layer 2
+Removing intermediate container 02086b886409
+ ---> d1d7f8980ae4
+Step 4/4 : RUN echo "layer 3"
+ ---> Running in 229547a0957b
+layer 3
+Removing intermediate container 229547a0957b
+ ---> 287c15a927e4
+Successfully built 287c15a927e4
+Successfully tagged cache-busting:v1
+╭tkaplonski@tkaplonski-XPS-15-9560:~/Documents/articles/examples/cache-busting(master)
+╰⎼$ docker image build -t cache-busting:v2 ./v2/
+Sending build context to Docker daemon  2.048kB
+Step 1/4 : FROM busybox
+ ---> 020584afccce
+Step 2/4 : RUN echo "layer 1"
+ ---> Using cache
+ ---> 198f4fab9455
+Step 3/4 : RUN echo "layer 2 changed!"
+ ---> Running in 692b7a4f394e
+layer 2 changed!
+Removing intermediate container 692b7a4f394e
+ ---> e91e58bdca83
+Step 4/4 : RUN echo "layer 3b"
+ ---> Running in a13a8ca18ce9
+layer 3b
+Removing intermediate container a13a8ca18ce9
+ ---> 63f754530481
+Successfully built 63f754530481
+Successfully tagged cache-busting:v2
+```
+
+As you can see above Docker did not execute `echo "layer 1"` while building second version of the image and just used the result from the cache, This might result with some side effects and some
+will be mentioned later in this text.
 
 ### Containers vs Virtual Machines
 
@@ -108,7 +186,61 @@ As mentioned above, most Docker Images are Linux based and as such they require 
 
 Another thing worth mentioning is that Docker for Windows requires Windows 10 Professional because it uses HyperV, In case you are using older version of Windows or Win10 Home you can alternatively use Docker Toolbox that uses Oracle's VirtualBox for running Docker Daemon.
 
+### Image naming
+
+Docker Image name consists of a few parts with various meaning. Generally the name can be described as
+
+```bash
+[REGISTRY_URL[:PORT]/][NAMESPACE/]IMAGE_NAME[:TAG][@DIGEST]
+```
+
+As the format above sugests most parts of the Image are actually optional:
+
+- REGISTRY_URL - this is the host of Docker Registry where the Image is stored. If ommited it defaults to `hub.docker.com` but otherwise it can be used to inform Docker Daemon to search for the image in private or public alternatives. Depending on the specific Registry additional authentication can be required.
+- PORT - Port on which registry listens to connections. It's worth mentioning here that most implementations of Docker Registries are containerized themselves which means this port is often mapped to HTTP 80 or HTTPS 443. App inside container usually listens on port 5000
+- NAMESPACE - Namespaces have particularly important meaning in terms of default Docker Hub. All users and organizations get their own namespace that can be used to identify Image owner. Popular
+tools however often have _official_ images created in cooperation between the tool authoring organization and Docker Inc specialists to guarantee their high quality and best practice compliance. 
+These images have empty namespace in `hub.docker.com` (in public url it is represented by single underscore character)
+- IMAGE_NAME - the only part of the format that is not optional
+- TAG - Images in the registry can contain multiple versions distinguished by tag name. If ommited this part defaults to `latest` but, unless you're doing some dev tries, you should always specify
+exact TAG you want to work with.
+- DIGEST - Even though it is not a good practice to change the tag it might sometimes happen. In such cases you can always refer to exact build by its digest (or at least part of it that is long enough to identify specific build)
+
 ## Good practices
+
+### Keep app image simillar between environments!
+
+Since containers contain all the dependencies required by given application it is possible to design the Image a way that they can be reused in all stages of application lifecycle. Naturally
+in dev environments you will need set of tools that are not supposed to be shipped to production but they should be only added on top of default Image instead of creating totally separate image
+for different stage.
+
+Simplistic example could be:
+```bash
+#base-image/Dockerfile
+FROM nginx
+
+RUN apt install -y php7.0
+
+CMD ["nginx", "-d", "daemon off"]
+#-------------
+
+docker image build -t base-app .
+
+#dev-image/Dockerfile
+FROM base-app
+
+RUN apt install -y php7.0-xdebug
+#-------------
+
+docker image build -t dev-app .
+```
+
+Any runtime differences related to cloud based hosting is responsibility of orchestration layer which will be explained separately. From application perspective everything should look the same
+no matter if it's executed on local developer's machine, on testing server or in distributed cloud environment.
+
+### Application code base as part of the image
+
+TODO
 
 ### Alpine vs Debian
 
@@ -120,7 +252,8 @@ THis minimalizm comes for a price of various nuances that might result with appl
 
 Also, from security perspective it's importatn to know that Alpine has issues with most CVE scanners.
 
-Still, in certain scenarios small size of Alpine based images is a great advantage. It's also critical to realize risks related to this distribution in comparison to Debian ones.
+Still, in certain scenarios small size of Alpine based images is a great advantage. One of the biggest advantages of Alpine versions is the fact their minimalizm - smaller amount of packages
+shipped by default means smaller attack surface in production images.
 
 ### ADD vs COPY
 
@@ -144,9 +277,115 @@ Since Docker tries to keep backwards compatibility both versions are supported b
 
 Layered composition of Docker Images described above means that Deamon will try to reuse as much cached layers as possible but once certain Image diverge from existing order all following commands will actually create new layers. For this reason you should try to put commands that are most likely to change in the future at the end of Dockerfile.
 
-### Multistage builds
+### Package managers vs layer caching
 
-TODO
+#### Outdated package state
+
+One of the side effects of the way how Docker handles multiple layers you should be careful when using package managers within your dockerfiles. It is crucial to rememember that each command
+within Docker file is a separate layer that will be separately saved and cached:
+
+```bash
+FROM nginx #layer 1
+RUN apt update #layer 2
+RUN apt install curl #layer 3
+```
+
+In above example second layer will get cached and Docker will try to reuse it as much as possible. After some time you might add some additional package to install:
+```bash
+FROM nginx #layer 1
+RUN apt update #layer 2
+RUN apt install curl wget #layer 3b
+```
+
+In above scenario Docker will not execute `apt update` again and just use layer created during the first build - in this case outdated state of package repositories.
+
+#### Package state cache in resulting build
+
+Another caveat of the layer mechanism is that the files that exist in any layer used to build an image are never actually removed by the next layer. Instead they are just hidden with Union File System. Look at following example:
+
+```bash
+FROM nginx #layer 1
+RUN apt update #layer 2
+RUN apt install curl #layer 3
+RUN apt clean #layer 4
+```
+
+In this case developer might believe that he cleaned apt cache by running `apt clean`. However though resulting image is built on top of layer 2 that actually contained entire cache. This cache will not be visible from the container level as it will be overriden in layer 4 but files will be still there so the image will be bigger.
+
+#### Solution
+
+For these reasons it is important to always include update and cleanup operation in the same `RUN` command as actual package installation:
+
+```bash
+FROM nginx
+
+RUN apt update && \
+  apt install curl && \
+  apt clean
+```
+
+This way Docker will create layer holding the state of image after required packages get installed and package manager's state gets cleaned up.
+
+## Multistage builds
+
+In mid 2017 Docker introduced a multi-stage build mechanism that allow multiple advanced techniques to optimize the resulting image.
+
+### Tools used for build only
+
+Many applications require additional packages to build them that should not be present in production grade application. As mentioned above, developer should always work on environment that
+resembles production as much as possible so his/her images should be always designed for production in fact.
+
+Let's take a look at following Dockerfile
+
+```bash
+FROM composer as build
+WORKDIR /src
+COPY . .
+RUN composer install
+
+FROM php-apache 
+COPY --from=build /src /var/www/html
+```
+
+Each `FROM` statement here actually starts a stage of the build that does not need to depend on the other ones. In this particular scenario we used basic Composer image to download
+all required vendor packages in temporary Image and then only copied the result to target branch.
+
+Resulting image after the build will not contain Composer at all - not only in resulting file system visible to the application but also in any layer used to achieve this state before.
+
+### Dev differences in a single Dockerfile
+
+Every stage of the Image build can be named and treated as separate target so multi stage builds can be used to avoid handling multiple Dockerfiles for various environments that refer each other. So instead of two separate Dockerfile presented in `Keep app image simillar between environments!` paragraph we could create just one:
+
+```bash
+FROM nginx as prod
+RUN apt install -y php7.0
+CMD ["nginx", "-d", "daemon off"]
+
+FROM prod as dev
+RUN apt install -y php7.0-xdebug
+```
+
+Now we could run `docker image build -t base-app --target prod .` to run production and `docker image built -t dev-app --target dev .` to build development version. In case `--target` is ommitted
+Docker will build all stages and result will be effect of the last one so in this specific case `--target dev` could be safely removed and achieved result would be the same.
+
+### CI testing as build stage
+
+A special case of multi stage build could be running unit tests. They could get executed on each build and not allow pipeline to even push to registry image in state where the application behaves
+improper:
+
+```bash
+FROM php as temporary-stage
+WORKDIR /var/www/html
+COPY . .
+
+FROM temporary-stage as test
+RUN wget -O phpunit https://phar.phpunit.de/phpunit-8.phar && chmod +x phpunit
+RUN ./phpunit --bootstrap src/autoload.php --testdox tests
+
+FROM temporary-stage as prod
+```
+
+In such scenario running `docker image build .` would result with executing `test` stage that would stop the following stages if some tests do not pass.
 
 ## Docker Compose
 
