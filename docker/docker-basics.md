@@ -53,31 +53,58 @@ This layer contains changes made while container is running and it can be saved 
 
 As mentioned above Docker Images consist of multiple layers that are put on top of previous ones. Thanks to Union File System each layer can change or add files in the filesystem that will be seen by resulting application. Old files however will be only hidden, not replaced - original files from previous layers will be still stored in resulting Image. 
 
-For instance we check `mysql:5.7` Image to see how exactly it was built:
+Consider following `Dockerfile`:
 
+```dockerfile
+FROM busybox
+COPY file1.txt /test.txt
+COPY file2.txt /test.txt
 ```
-╰⎼$ docker image history mysql:5.7
+
+This image creates a simple image and stores some text file within. We can check the contents by building and running it:
+
+```bash
+╰⎼$ cat file1.txt 
+foo
+
+╰⎼$ cat file2.txt 
+bar
+
+$ docker image build -t layer .
+Sending build context to Docker daemon  4.096kB
+Step 1/3 : FROM busybox
+ ---> b534869c81f0
+Step 2/3 : COPY file1.txt /test.txt
+ ---> fabb19e654b4
+Step 3/3 : COPY file2.txt /test.txt
+ ---> 290bfaf6a0e0
+Successfully built 290bfaf6a0e0
+Successfully tagged layer:latest
+
+╰⎼$ docker container run -it --rm layer sh 
+/ # cat /test.txt 
+bar
+/ # 
+```
+
+As you can see from container perspective `/test.txt` contains contents of `file2.txt` from host system. This does not mean however that `file1.txt` does not exist in the resulting image.
+Docker adds a new layer for each command in `Dockerfile` and any file changes are reflected by mechanics of UFS - only the latest one will be actually visible.
+
+We can see how exactly the Image is constructed by checking its history:
+
+```bash
+$ docker image history layer:latest 
 IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
-1e4405fe1ea9        6 days ago          /bin/sh -c #(nop)  CMD ["mysqld"]               0B                  
-<missing>           6 days ago          /bin/sh -c #(nop)  EXPOSE 3306 33060            0B                  
-<missing>           6 days ago          /bin/sh -c #(nop)  ENTRYPOINT ["docker-entry…   0B                  
-<missing>           6 days ago          /bin/sh -c ln -s usr/local/bin/docker-entryp…   34B                 
-<missing>           6 days ago          /bin/sh -c #(nop) COPY file:b3081195cff78c47…   12.7kB              
-<missing>           6 days ago          /bin/sh -c #(nop)  VOLUME [/var/lib/mysql]      0B                  
-<missing>           6 days ago          /bin/sh -c {   echo mysql-community-server m…   321MB               
-<missing>           6 days ago          /bin/sh -c echo "deb http://repo.mysql.com/a…   56B                 
-<missing>           6 days ago          /bin/sh -c #(nop)  ENV MYSQL_VERSION=5.7.28-…   0B                  
-<missing>           6 days ago          /bin/sh -c #(nop)  ENV MYSQL_MAJOR=5.7          0B                  
-<missing>           6 days ago          /bin/sh -c set -ex;  key='A4A9406876FCBD3C45…   30.2kB              
-<missing>           6 days ago          /bin/sh -c apt-get update && apt-get install…   44.8MB              
-<missing>           6 days ago          /bin/sh -c mkdir /docker-entrypoint-initdb.d    0B                  
-<missing>           6 days ago          /bin/sh -c set -x  && apt-get update && apt-…   4.44MB              
-<missing>           6 days ago          /bin/sh -c #(nop)  ENV GOSU_VERSION=1.7         0B                  
-<missing>           6 days ago          /bin/sh -c apt-get update && apt-get install…   10.2MB              
-<missing>           6 days ago          /bin/sh -c groupadd -r mysql && useradd -r -…   329kB               
-<missing>           6 days ago          /bin/sh -c #(nop)  CMD ["bash"]                 0B                  
-<missing>           6 days ago          /bin/sh -c #(nop) ADD file:2c1f5e08834f13ccb…   55.3MB 
+290bfaf6a0e0        2 minutes ago       /bin/sh -c #(nop) COPY file:3f44886ae05277f8…   4B                  
+fabb19e654b4        2 minutes ago       /bin/sh -c #(nop) COPY file:7c3bda9dece79876…   4B                  
+b534869c81f0        3 days ago          /bin/sh -c #(nop)  CMD ["sh"]                   0B                  
+<missing>           3 days ago          /bin/sh -c #(nop) ADD file:884f543fc51111835…   1.22MB
 ```
+
+Above result says that original image was rebuilt 3 days ago and default command was specified as `sh`. This part was done within `busybox` definition. On top of that there were two layers
+added by our example `Dockerfile` adding a simple text file. Layer `fabb19e654b4` contains our `file1.txt` and then layer `290bfaf6a0e0` added `file2.txt` in the same location.
+
+See [Dive](https://github.com/wagoodman/dive) tool if you want to browse actual contents of any Docker image. 
 
 This approach allows Docker to cache and reuse parts of the data in multiple Images. 
 
