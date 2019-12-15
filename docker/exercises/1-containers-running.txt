@@ -1,0 +1,47 @@
+So here are some quick exercises after Friday:
+
+Basics
+1. Run Ubuntu 19.04 (it is not "latest"! - check hub.docker.com for details)
+2. Make sure it is connected to default network, and find IP assigned to this container (hint: use inspect)
+3. Create a brand new network with default driver (bridge)
+4. Run Mysql of any version in new network. It requires some env variable to start - find what in docs.
+5. Verify that this container runs in different network and check it's IP address
+6. Connect to Ubuntu's terminal and try to connect* to your mysql container - use IP address or container's name, it shouldn't work anyway. 
+7. What should you do to make these container? Fix it. Make sure that ubuntu container can find mysql by name now.
+
+Round robin test:
+1. Leave Ubuntu container running - you'll need it for testing in a moment
+2. Since Docker Engine 1.11 you can run multiple containers with the same network alias (parameter --networm-alias). Let's use it.
+3. Run a few (3?) instances of alpine running in a background. Keep in mind that like any other "plain os" image it will - by default - finish execution immediately after executing. Make sure it doesn't happen by adding infinite loop (we used it on Friday). Give all of them the same alias, let's say "round-robin-test"
+4. Go back to ubuntu container and ping this alias a few times. What do you get as IP of requested server?
+
+A little bit of scripting:
+Inspect offers quite some formatting features to control what exactly will be returned.
+Here are some tasks:
+1. Get internal IP Address of one of your alpine containers. Make sure output contains ONLY the address.
+1a. Use '--format' templating. It uses Go templates so you'll need to search documentation.
+1b. Output of Docker Inspect is in fact JSON so instead of using '--format' try to play a little bit with command line tool called `jq` - you'll need to install it but it's worth to have anyway :)
+2. Now try to get the same but with ubuntu that should be connected to two networks - you want to get IP within network you created (non-default one).
+
+Volumes:
+1. Start another ubuntu container - doesn't matter what network.
+2. From container's shell store random number in file "/data/test.txt"
+3. Stop and delete container
+4. Start new ubuntu container. 
+5. Try read the random number.
+6. Obviously that won't work without volume so redo it with named volume.
+7. Now create file containing random number on your host machine.
+8. Run ubuntu container in a way that this file is visible under "/data/".
+9. Change content of the file from container level and check it from host perspective to verify change is reflected.
+
+Container signals.
+This is just an introduction for the next talk. You should still have ubuntu and alpine containers from first two exercises running. If not - run them again.
+Before actual exercise:
+1. First check how much resources do they use: `docker container stats`. 
+2. Also, remember you can see what do they output by checking logs: `docker container logs <container>`
+3. To the point, try to stop one of alpine containers with `docker container stop alpine1`. You'll see that shell stops responding. Don't panic and wait for a while.
+4. It took a moment but it stopped. Let's try again with second alpine, this time run this: `start=$(date +"%s") && docker container stop alpine2 && end=$(date +"%s") && echo $(($end - $start))` - you'll see that system was not responding for 10 seconds.
+5. Get rid of last alpine container, this time do it by running `docker container kill alpine3` - you'll see it ends pretty much immediately.
+Clearly behavior between stop and kill is different. Next time we'll discuss what exactly happens and what does it mean in "fancier" appliances.
+
+* by connect I mean whatever to check connectivity. You can use ping if you want.
