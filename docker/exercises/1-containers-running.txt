@@ -1,5 +1,7 @@
 So here are some quick exercises after Friday:
 
+TIME: 30-60 minutes
+
 Basics
 1. Run Ubuntu 19.04 (it is not "latest"! - check hub.docker.com for details)
 2. Make sure it is connected to default network, and find IP assigned to this container (hint: use inspect)

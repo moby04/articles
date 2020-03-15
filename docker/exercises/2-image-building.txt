@@ -1,0 +1,23 @@
+First clone repository git@github.com:BretFisher/docker-mastery-for-nodejs.git if you didn't do so already. It contains a few assignments and samples.
+
+For last lesson I'd like you to do `assignment-mta` first. MTA stands for "Migrate Traditional Application" and is quite common task category.
+
+You will find a readme file explaining how to run application that needs to be containerized. This is a basic nodejs application but does not require much knowledge of node itself. Here are requirements:
+
+    Make sure that running container does not contain any graphics - in or out. Those dirs need to be provided as volume or bind mount
+    For starters prepare basic nodejs image - afterwards add tini as main process. As extra exercise you can add in the application handling SIGTERM and SIGKILL signals (tini only passes those to subprocess - handling needs to be implemented separately)
+    Application requires CHARCOAL_FACTOR environmental variable - make sure image has it set to 0.1
+    Finally logs, current implementation of this application logs some information to `./logs` directory. Now, Factor XI (have you read it? :P) suggests to consider logs as event stream and Docker best practice is to just redirect all logs to STDOUT/STDERR so you need to adjust that. In two ways (in both you should not end up with logs in container):
+        First, preferred approach in general, is to modify application source code. This requires basic knowledge of nodejs and Winston package (https://www.npmjs.com/package/winston) - you'll just need to change transport setting.
+        Second is an alternative in case you couldn't for some reason touch actual application source code. In this case application will continue to write to a file but you want this on your STDOUT - make sure this happens by adjusting Dockerfile only (hint: check how it is achieved in official nginx image)
+
+Second exercise is about preparing nice multistage Dockerfile. Take a simple PHP application - can be written in Laravel or whatever. Really, use app you work on or just get some example like the one from quickstart - it doesn't really matter. Here's what you should take care of:
+
+    Dockerfile should have minimum of 3 stages: prod, dev and test - can be more
+    Make sure that you run nginx and php-fpm in a single container (that's not something nginx guys recommend but I like it for various reasons :P). You can check ECS for hints.
+    Prod stage should have only minimum amount of packages required to run application. This means composer require and no dev tooling (not even composer!)
+    Dev stage should have composer, xdebug configured to work with IDE running on host and any dev dependencies you'd like
+    Test stage should actually run tests - as for me you can use any unit test framework or even just PHP Code Sniffer. Make sure that this stage fails if tests are failing so that prod stage does not succeed as well.
+    Build all 3 targets with different tags
+
+Bonus, take Dockerfile with PHP application and add another stage called audit. This stage should download Aqua MicroScanner (https://github.com/aquasecurity/microscanner) and check your image for security vulnerabilities. Now, most images do have those issues so for now just make sure you get informed about problems but it shouldn't break entire image build. 
